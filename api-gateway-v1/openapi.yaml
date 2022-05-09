@@ -1,0 +1,679 @@
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: ${apigw_api_name}
+  description: |
+    The payment gateway APIs exposes operations for performing a payment, including:
+    * Initialization of a payment
+    * Authorization of a payment
+    Additionally the APIs includes operations for retrieving a specific payment.
+servers:
+  - url: https://${apigw_domain}
+security:
+  - paymentGatewayAuth: []
+paths:
+  /v1/{merchant_id}/payment:
+    parameters:
+      - in: path
+        name: merchant_id
+        description: The unique id of the merchant who will own the initalized payment
+        required: true
+        schema:
+          $ref: '#/components/schemas/MerchantId'
+    get:
+      summary: Retrieves the details for all payments for the specified merchant
+      operationId: get_all_payments
+      tags:
+        - payment_v1
+      description: |
+        Retrieves the details for all payments for the specified merchant, please note that:
+        * Merchants can only access their own payments
+      x-amazon-apigateway-integration:
+        type: HTTP_PROXY
+        connectionType: INTERNET
+        httpMethod: GET
+        uri: http://pgw.eks.aws.jonatanbuus.dk/{proxy+}
+      responses:
+        200:
+          description: The details for all payments for the specified merchant
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Payment'
+        400:
+          description: Bad request - The merchant id is missing from the path
+        500:
+          description: Internal server error - Retrieval of the payments for the specified merchant failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+    post:
+      summary: Initalizes a new payment for the specified merchant
+      operationId: initialize_payment
+      tags:
+        - payment_v1
+      description: |
+        Initializes a new payment with the provided details, please note that:
+        * Merchants can only initialze a payment for themselves
+        * Merchants will only be able to access their own payments
+      x-amazon-apigateway-integration:
+        type: MOCK
+        requestTemplates:
+          application/json: |-
+            { "statusCode" : 201 }
+        passthroughBehavior: WHEN_NO_MATCH
+        responses:
+          default:
+            statusCode: 201
+            responseTemplates:
+              application/json: |-
+                { "id": 1234 }
+      requestBody:
+        description: The details for the payment that will be initialized
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitializePaymentRequest'
+      responses:
+        201:
+          description: The details for the initialized payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InitializePaymentResponse'
+        400:
+          description: Bad request - The provided initialization request contains invalid or missing data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        403:
+          description: Forbidden - The merchant has successfully authenticated, but is not authorized to access the specified point of sale (pos)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        404:
+          description: Not found - The configuration for the specified merchant or point of sales (pos) could not be found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        500:
+          description: Internal server error - Initialization of the payment failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+  /v1/{merchant_id}/payment/{payment_id}:
+    parameters:
+      - in: path
+        name: merchant_id
+        description: The unique id of the merchant who owns the payment
+        required: true
+        schema:
+          $ref: '#/components/schemas/MerchantId'
+      - in: path
+        name: payment_id
+        description: The unique id of the payment that will be retrieved
+        required: true
+        schema:
+          $ref: '#/components/schemas/RecordEntityId'
+    get:
+      summary: Retrieves the details for the specified payment
+      operationId: get_payment
+      tags:
+        - payment_v1
+      description: |
+        Retrieves the details for the specified payment, please note that:
+        * Merchants can only access their own payments
+      x-amazon-apigateway-integration:
+        type: MOCK
+        requestTemplates:
+          application/json: |-
+            { "statusCode" : 200 }
+        responses:
+          default:
+            statusCode: 200
+            responseTemplates:
+              application/json: |-
+                {
+                  "id": 1234,
+                  "payment_method": 108,
+                  "payment_status": 10,
+                  "provider_id" : 1,
+                  "amount": {
+                    "value" : 10000,
+                    "currency": 208
+                    }
+                }
+      responses:
+        200:
+          description: The details for the specified payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        400:
+          description: Bad request - The merchant id or payment id is missing from the path
+        403:
+          description: Forbidden - The merchant has successfully authenticated, but is not authorized to access the specified payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        404:
+          description: Not found - The specified payment could not be found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        500:
+          description: Internal server error - Retrieval of the specified payment failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+    post:
+      summary: Authorizes the specified payment
+      operationId: authorize_payment
+      tags:
+        - payment_v1
+      description: |
+        Authorizes a payment with the provided details, please note that:
+        * Merchants can only authorize their own payments
+      x-amazon-apigateway-integration:
+        type: AWS
+        httpMethod: POST
+        credentials: ${credentials}
+        uri: arn:aws:apigateway:${aws_region}:states:action/StartSyncExecution      
+        requestTemplates:
+          application/json: '${apigw_json_request_template}'
+        passthroughBehavior: WHEN_NO_MATCH
+        responses:
+          default:
+            statusCode: 200
+            responseTemplates:
+              application/json: '${apigw_json_response_template}'
+      requestBody:
+        description: The details for the payment that will be authorized
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizePaymentRequest'
+      responses:
+        200:
+          description: The details for the authorized payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizePaymentResponse'
+        400:
+          description: Bad request - The provided authorization request contains invalid or missing data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        403:
+          description: Forbidden - The merchant has successfully authenticated, but is not authorized to access the specified payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        404:
+          description: Not found - The specified payment could not be found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        500:
+          description: Internal server error - Authorization of the specified payment failed internally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        502:
+          description: Internal server error - Authorization of the specified payment failed with the upstream provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        504:
+          description: Internal server error - Authorization of the specified payment failed due to a timeout while communication with the upstream provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+  /v1/{merchant_id}/payment/{payment_id}/notification:
+    parameters:
+      - in: path
+        name: merchant_id
+        description: The unique id of the merchant who owns the payment
+        required: true
+        schema:
+          $ref: '#/components/schemas/MerchantId'
+      - in: path
+        name: payment_id
+        description: The unique id of the payment that will be retrieved
+        required: true
+        schema:
+          $ref: '#/components/schemas/RecordEntityId'
+    post:
+      summary: Posts a notifications for the specified payment
+      operationId: post_notification
+      tags:
+        - payment_v1
+      description: |
+        Posts a notifications for a payment with the provided details, please note that:
+        * Merchants can only post notifications for their own payments
+      x-amazon-apigateway-integration:
+        type: MOCK
+        requestTemplates:
+          application/json: |-
+            { "statusCode" : 200 }
+        passthroughBehavior: WHEN_NO_MATCH
+        responses:
+          default:
+            statusCode: 200
+      requestBody:
+        description: The details for the notification that will be posted
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+      responses:
+        200:
+          description: Notification has been successfully posted for the specified payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        400:
+          description: Bad request - The provided notification request contains invalid or missing data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        403:
+          description: Forbidden - The merchant has successfully authenticated, but is not authorized to access the specified payment
+        404:
+          description: Not found - The specified payment could not be found
+        500:
+          description: Internal server error - Authorization of the specified payment failed internally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+  /v1/{merchant_id}/authorize-payment/{payment_id}/acquirer-1:
+    parameters:
+      - in: path
+        name: merchant_id
+        description: The unique id of the merchant who owns the payment
+        required: true
+        schema:
+          $ref: '#/components/schemas/MerchantId'
+      - in: path
+        name: payment_id
+        description: The unique id of the payment that will be retrieved
+        required: true
+        schema:
+          $ref: '#/components/schemas/RecordEntityId'
+    post:
+      summary: Authorizes the specified payment through acquirer 1
+      operationId: authorize_payment_acquirer_1
+      tags:
+        - payment_integration_v1
+      description: |
+        Authorizes a payment with the provided details through acquirer 1, please note that:
+        * Merchants can only authorize their own payments
+      x-amazon-apigateway-integration:
+        type: MOCK
+        requestTemplates:
+          application/json: |-
+            { "statusCode" : 200 }
+        passthroughBehavior: WHEN_NO_MATCH
+        responses:
+          default:
+            statusCode: 200
+            responseTemplates:
+              application/json: |-
+                {
+                  "status": {
+                      "code" : 10000,
+                      "message": "success"
+                  },
+                  "auth_code": 123456
+                }
+      requestBody:
+        description: The details for the payment that will be authorized
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizePaymentRequest'
+      responses:
+        200:
+          description: The details for the authorized payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizePaymentResponse'
+        400:
+          description: Bad request - The provided authorization request contains invalid or missing data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        403:
+          description: Forbidden - The merchant has successfully authenticated, but is not authorized to access the specified payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        404:
+          description: Not found - The specified payment could not be found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        500:
+          description: Internal server error - Authorization of the specified payment failed internally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        502:
+          description: Internal server error - Authorization of the specified payment failed with the upstream provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+        504:
+          description: Internal server error - Authorization of the specified payment failed due to a timeout while communication with the upstream provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
+components:
+  securitySchemes:
+    paymentGatewayAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT based HTTP Bearer Authentication used across all services
+  schemas:
+    StatusMessage:
+      type: object
+      required:
+        - system
+        - code
+        - description
+      properties:
+        code:
+          description: The status code returned by the system
+          $ref: '#/components/schemas/STATUSCODE'
+        message:
+          description: A description of the status code returned by the system
+          type: string
+          minimum: 10
+          example: 'Invalid authorization header for end-point: /example. Authorization header must use the HTTP Bearer authentication.'
+    STATUSCODE:
+      description: The status codes that may be returned
+      type: integer
+      enum:
+        - 404001
+        - 403001
+        - 500001
+      x-enum-varnames:
+        - PAYMENT_NOT_FOUND
+        - PAYMENT_NOT_OWNED_BY_MERCHANT
+        - INVALID_PAYMENT_URI
+      x-enum-descriptions:
+        - The specified payment could not be not found
+        - The specified payment is not owned by the merchant
+        - Invalid location constructed for payment
+    MerchantId:
+      description: The unique id of the merchant who will own the created payment
+      type: integer
+      format: int32
+      minimum: 10000
+      example: 10045
+    RecordEntityId:
+      description: The payment gateway's unique ID for a payment, payment transaction or an entity associated with either such as an amount
+      type: integer
+      format: int64
+      minimum: 1
+      example: 1234
+    Amount:
+      description: A representation of an amount used through various payment related operations
+      type: object
+      required:
+        - value
+        - currency
+      properties:
+        value:
+          description: The amount value in the currency's smallest unit, i.e. cents, pence etc.
+          type: integer
+          format: int64
+          minimum: 100
+          example: 1000
+        currency:
+          description: The numeric currency code as defined by ISO-4217
+          $ref: '#/components/schemas/CURRENCY'
+    CURRENCY:
+      description: Currency code as defined by ISO-4217 using the numeric codes as values and the alpha-3 codes as names
+      type: integer
+      format: ISO-4217
+      enum:
+        - 208 # Denmark Krone
+        - 978 # Euro Member Countries
+        - 826 # United Kingdom Pound
+        - 840 # United States Dollar
+      x-enum-varnames:
+        - DKK # Denmark Krone
+        - EUR # Euro Member Countries
+        - GBP # United Kingdom Pound
+        - USD # United States Dollar
+      example: EUR
+    PAYMENTSTATUS:
+      description: Status of a payment
+      type: integer
+      enum:
+        - 10 # Initialized
+        - 20 # Authorized
+        - 21 # Authorization Declined
+        - 30 # Captured
+        - 31 # Capture Declined
+        - 40 # Refunded
+        - 50 # Cancelled
+      x-enum-varnames:
+        - INITIALIZED
+        - AUTHORIZATION_SUCCESSFUL
+        - AUTHORIZATION_DECLINED
+        - CAPTURE_SUCCESSFUL
+        - CAPTURE_DECLINED
+        - REFUND_SUCCESSFUL
+        - CANCEL_SUCCESSFUL
+      example: AUTHORIZATION_SUCCESSFUL
+    PAYMENTMETHODID:
+      description: The unique id for the payment method (AMEX, MasterCard, VISA etc.)
+      type: integer
+      enum:
+        - 101
+        - 102
+        - 103
+        - 104
+        - 105
+        - 106
+        - 107
+        - 108
+        - 109
+        - 110
+      x-enum-varnames:
+        - AMEX
+        - DANKORT
+        - VISA_DANKORT
+        - DINERS_CLUB
+        - DISCOVER
+        - JCB
+        - MAESTRO
+        - MASTERCARD
+        - VISA
+        - VISA_ELECTRON
+      x-enum-descriptions:
+        - Charge or credit card powered by the global Amercan Express scheme
+        - Local Danish card scheme
+        - Local Danish card scheme which can be authorized as a VISA card
+        - Credit card powered by the global Diners Club scheme
+        - Credit or debit card powered by the global Discover scheme
+        - Credit card powered by the global Japan Credit Bureau scheme
+        - Debit card scheme owned by MasterCard
+        - Credit or debit card powered by the global MasterCard scheme
+        - Credit or debit card powered by the global VISA scheme
+        - Credit card powered by the global VISA scheme
+    InitializePaymentRequest:
+      type: object
+      required:
+        - amount
+      properties:
+        amount:
+          $ref: '#/components/schemas/Amount'
+        order_id:
+          description: |
+            The merchant's unique id for the order with which the payment is associated.
+          type: string
+          minLength: 1
+          maxLength: 40
+          example: AWS-103645
+    InitializePaymentResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          description: The payment gateway's unique ID for the consumer's payment
+          $ref: '#/components/schemas/RecordEntityId'
+        ip:
+          description: The source IP address from which the payment was created
+          type: string
+          format: ipv4
+          example: '80.52.87.56'
+        port:
+          description: The source port from which the payment was created
+          type: integer
+          format: int32
+          example: 37570
+    AuthorizePaymentRequest:
+      type: object
+      required:
+        - amount
+        - card_number
+        - expiry_month
+        - expiry_year
+        - cvv
+      properties:
+        amount:
+          $ref: '#/components/schemas/Amount'
+        card_number:
+          description: The consumer's card number
+          type: integer
+          example: 5402871234567890
+        expiry_month:
+          description: The expiry month for the consumer's card
+          type: integer
+          example: 12
+        expiry_year:
+          description: The expiry year for the consumer's card
+          type: integer
+          example: 21
+        cvv:
+          description: The card verification value for the consumer's card
+          type: integer
+          example: 123
+        card_holder_name:
+          description: The card holder's full name as printed on the consumer's card
+          type: string
+          example: Jonatan Evald Buus
+    AuthorizePaymentResponse:
+      type: object
+      required:
+        - auth_code
+      properties:
+        auth_code:
+          description: |
+            The authorization code returned by the upstream provider
+          type: string
+          minLength: 1
+          maxLength: 40
+          example: 654321-ABCD
+    Payment:
+      allOf:
+      - $ref: '#/components/schemas/InitializePaymentRequest'
+      - description: A complete representation of the consumer's payment
+        type: object
+        required:
+          - id
+          - amount
+          - merchant_id
+          - payment_status
+          - payment_method
+          - ip
+          - port
+          - created
+          - modified
+        properties:
+          id:
+            description: The payment gateway's unique ID for the consumer's payment
+            $ref: '#/components/schemas/RecordEntityId'
+          amount:
+            $ref: '#/components/schemas/Amount'
+          merchant_id:
+            $ref: '#/components/schemas/MerchantId'
+          payment_status:
+            $ref: '#/components/schemas/PAYMENTSTATUS'
+          payment_method:
+            $ref: '#/components/schemas/PAYMENTMETHODID'
+          ip:
+            description: The source IP address from which the payment was created
+            type: string
+            format: ipv4
+            example: '80.52.87.56'
+          port:
+            description: The source port from which the payment was created
+            type: integer
+            format: int32
+            example: 37570
+          created:
+            description: Timestamp specifying when the payment was created
+            type: string
+            format: date-time
+            example: '2017-07-21T17:32:28Z'
+          modified:
+            description: Timestamp specifying when the payment was last modified
+            type: string
+            format: date-time
+            example: '2017-07-21T17:32:28Z'
+    NotificationRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/PAYMENTSTATUS'
+        iin:
+          description: The first 4 digits of the consumer's card number
+          type: integer
+          example: 5402
+        auth_code:
+          description: |
+            The authorization code returned by the upstream provider
+          type: string
+          minLength: 1
+          maxLength: 40
+          example: 654321-ABCD
