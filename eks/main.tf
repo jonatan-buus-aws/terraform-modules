@@ -257,7 +257,7 @@ resource "null_resource" "cluster" {
 
 	# Disable public access to the EKS cluster's API Server if var.eks_secure_cluster is set to true
 	provisioner "local-exec" {
-		command = "aws eks update-cluster-config --name ${self.triggers.cluster} --region ${self.triggers.region} --resources-vpc-config endpointPublicAccess=${self.triggers.public_access}"
+		command = "aws eks update-cluster-config --name ${self.triggers.cluster} --region ${self.triggers.region} --resources-vpc-config endpointPrivateAccess=true endpointPublicAccess=${self.triggers.public_access}"
 	}
 /*
 	# Node groups and Fargate profiles can be added to the cluster while it's updating
@@ -279,7 +279,7 @@ resource "null_resource" "cluster" {
 */
 	provisioner "local-exec" {
 		when = destroy
-		command = "aws eks update-cluster-config --name ${self.triggers.cluster} --region ${self.triggers.region} --resources-vpc-config endpointPublicAccess=true"
+		command = "aws eks update-cluster-config --name ${self.triggers.cluster} --region ${self.triggers.region} --resources-vpc-config endpointPrivateAccess=true endpointPublicAccess=true"
 	}
 	# Wait for 30 seconds for the EKS cluster to start updating
 	provisioner "local-exec" {

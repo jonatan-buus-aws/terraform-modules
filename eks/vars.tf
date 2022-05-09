@@ -76,8 +76,8 @@ variable "eks_fargate_config" {
 
 variable "eks_cluster_version" {
     type = string
-    default = "1.20"
-    description = "The Kubernetes master version for the created EKS cluster. Defaults to \"1.20\""
+    default = "1.22.6"
+    description = "The Kubernetes master version for the created EKS cluster. Defaults to \"1.22.6\""
 }
 variable "eks_security_groups" {
     type = list(string)
