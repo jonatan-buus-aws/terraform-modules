@@ -50,7 +50,7 @@ resource "aws_apprunner_service" "service" {
 }
 
 resource "aws_apprunner_auto_scaling_configuration_version" "config" {
-	auto_scaling_configuration_name = "${var.app_runner_service_name}-config"
+	auto_scaling_configuration_name = substr("${var.app_runner_service_name}-cfg", 0, 32)
 
 	max_concurrency = 50
 	max_size = 10
