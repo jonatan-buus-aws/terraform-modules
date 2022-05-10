@@ -35,7 +35,7 @@ resource "kubernetes_deployment" "deployment" {
 					name = var.k8s_app_name
 
 					dynamic "env" {
-						for_each = var.k8s_app_environment_variables
+						for_each = merge({ "PORT" = var.k8s_app_port }, var.k8s_app_environment_variables)
 
 						content {
 							name = env.key
