@@ -15,7 +15,7 @@ locals {
 	node_role_arn = "arn:${data.aws_partition.partition.id}:iam::${data.aws_caller_identity.account.account_id}:role/${var.eks_node_role}" 
 	farget_role_arn = "arn:${data.aws_partition.partition.id}:iam::${data.aws_caller_identity.account.account_id}:role/${var.eks_fargate_role}" 
 
-	patch_script = module.common.os == "windows" ? "patch.bat" : "patch.sh"
+	patch_script = module.common.os == "windows" ? "${abspath(path.module)}/patch.bat" : "chmod +x ${abspath(path.module)}/patch.sh && ${abspath(path.module)}/patch.sh"
 
 	node_group_auth_config = [ { groups = [ "system:bootstrappers", "system:nodes" ],
 								 rolearn = local.node_role_arn,
@@ -115,7 +115,7 @@ resource "null_resource" "patch" {
 	depends_on = [ aws_eks_cluster.cluster ]
 
 	provisioner "local-exec" {
-		command = "${abspath(path.module)}/${local.patch_script} ${local.service_account_arn}"
+		command = "${local.patch_script} ${local.service_account_arn}"
 	}
 }
 
@@ -248,6 +248,8 @@ resource "aws_eks_addon" "addon" {
 resource "null_resource" "cluster" {
 	depends_on = [ aws_eks_node_group.on_demand, aws_eks_node_group.spot, aws_eks_fargate_profile.profile, aws_eks_addon.addon ]
 
+	count = var.eks_secure_cluster == true ? 1 : 0
+
 	triggers = {
 		region = data.aws_region.region.name
 		cluster = var.eks_cluster_name
@@ -257,13 +259,13 @@ resource "null_resource" "cluster" {
 
 	# Disable public access to the EKS cluster's API Server if var.eks_secure_cluster is set to true
 	provisioner "local-exec" {
-		command = "aws eks update-cluster-config --name ${self.triggers.cluster} --region ${self.triggers.region} --resources-vpc-config endpointPrivateAccess=true,endpointPublicAccess=${self.triggers.public_access}"
+		command = "aws eks update-cluster-config --name ${self.triggers.cluster} --region ${self.triggers.region} --resources-vpc-config endpointPrivateAccess=true,endpointPublicAccess=${self.triggers.public_access} || true"
 	}
 /*
 	# Node groups and Fargate profiles can be added to the cluster while it's updating
 	# Wait for 30 seconds for the EKS cluster to start updating
 	provisioner "local-exec" {
-		command = "PING localhost -n 30 >NUL"
+		command = "ping localhost -n 30 >NUL"
 	}
 	# Wait until the EKS cluster to finish updating
 	provisioner "local-exec" {
@@ -279,13 +281,15 @@ resource "null_resource" "cluster" {
 */
 	provisioner "local-exec" {
 		when = destroy
-		command = "aws eks update-cluster-config --name ${self.triggers.cluster} --region ${self.triggers.region} --resources-vpc-config endpointPrivateAccess=true,endpointPublicAccess=true"
+		command = "aws eks update-cluster-config --name ${self.triggers.cluster} --region ${self.triggers.region} --resources-vpc-config endpointPrivateAccess=true,endpointPublicAccess=true || true"
 	}
+/*
 	# Wait for 30 seconds for the EKS cluster to start updating
 	provisioner "local-exec" {
 		when = destroy
-		command = "PING localhost -n 30 >NUL"
+		command = "ping localhost -n 30 >NUL"
 	}
+*/
 	# Wait until the EKS cluster to finish updating
 	provisioner "local-exec" {
 		when = destroy
